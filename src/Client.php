@@ -199,6 +199,8 @@ class Client
             $uri = $new_request->getUri();
             $url = (string)$uri;
             $options = $new_request->getOptions();
+            $options['method'] = 'GET';
+            $options['data'] = NULL;
             $address = $this->parseAddress($url);
             $task = [
                 'url'      => $url,
