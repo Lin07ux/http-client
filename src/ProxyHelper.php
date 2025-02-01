@@ -6,7 +6,7 @@ use Workerman\Connection\AsyncTcpConnection;
 
 class ProxyHelper
 {
-    public static function setConnectionProxy(AsyncTcpConnection &$connection, array $context): void
+    public static function setConnectionProxy(AsyncTcpConnection $connection, array $context): void
     {
         $httpProxy = $context['http']['proxy'] ?? '';
         if (!empty($httpProxy)) {
@@ -22,11 +22,10 @@ class ProxyHelper
 
     public static function addressKey(string $address, string $proxyString): string
     {
-        if (strpos($proxyString, '://') === false) {
+        if (!str_contains($proxyString, '://')) {
             return $address;
         } else {
-            $proxyString = explode('//', $proxyString)[1] ?? '';
-            return $proxyString;
+            return explode('//', $proxyString)[1] ?? '';
         }
     }
 }

@@ -2,88 +2,85 @@
 
 namespace Workerman\Http;
 
-use Revolt\EventLoop;
 use Throwable;
-use Workerman\Http\Response;
+use Workerman\Coroutine\Parallel;
 use Workerman\Http\Client;
 
 /**
- * parallel client request
+ * Parallel client request
  */
 #[\AllowDynamicProperties]
 class ParallelClient extends Client
 {
-    protected $_buffer_queues = [];
+    /**
+     * @var Parallel
+     */
+    protected Parallel $parallel;
 
-    public function push(string $url, array $options = [])
+    /**
+     * @param array $options
+     */
+    public function __construct(array $options = [])
     {
-        $this->_buffer_queues[] = [$url, $options];
+        $this->parallel = new Parallel($options['concurrent'] ?? -1);
+        parent::__construct($options);
     }
 
-    public function batch(array $set)
+    /**
+     * Push a request to parallel.
+     *
+     * @param string $url
+     * @param array $options
+     * @return void
+     * @throws Throwable
+     */
+    public function push(string $url, array $options = []): void
     {
-        $this->_buffer_queues = array_merge($this->_buffer_queues, $set);
+        $this->parallel->add(function () use ($url, $options) {
+            return $this->request($url, $options);
+        });
     }
 
+
+    /**
+     * Batch requests to parallel.
+     *
+     * @param array $requests
+     * @return void
+     * @throws Throwable
+     */
+    public function batch(array $requests): void
+    {
+        foreach ($requests as $key => $request) {
+            $this->parallel->add(function () use ($request) {
+                return $this->request($request[0], $request[1]);
+            }, $key);
+        }
+    }
+
+    /**
+     * Wait for all requests to complete.
+     *
+     * @param bool $errorThrow
+     * @return array
+     * @throws Throwable
+     */
     public function await(bool $errorThrow = false): array
     {
-        if(!class_exists(EventLoop::class, false)) {
-            throw new \RuntimeException('Please install revolt/event-loop to use parallel client.');
+        $results = $this->parallel->wait();
+        $exceptions = $this->parallel->getExceptions();
+        if ($errorThrow && $exceptions) {
+            throw current($exceptions);
         }
-
-        $queues = $this->_buffer_queues;
-
-        $result = [];
-
-        $suspensionArr = array_fill(0, count($queues), EventLoop::getSuspension());
-
-        foreach ($queues as $index => $each) {
-            $suspension = $suspensionArr[$index];
-            $options = $each[1];
-
-            $options['success'] = function ($response) use (&$result, &$suspension, $options, $index) {
-                $result[$index] = [true, $response];
-                $suspension->resume();
-                // custom callback
-                if (!empty($options['success'])) {
-                    call_user_func($options['success'], $response);
-                }
-            };
-
-            $options['error'] = function ($exception) use (&$result, &$suspension, $errorThrow, $options, $index) {
-                $result[$index] = [false, $exception];
-                try {
-                    if ($errorThrow) {
-                        $suspension->throw($exception);
-                    } else {
-                        $suspension->resume();
-                    }
-                } catch (Throwable $e) {
-                    unset($suspension);
-                }
-                // custom callback
-                if (!empty($options['error'])) {
-                    call_user_func($options['error'], $exception);
-                }
-            };
-
-            $this->request($each[0], $options);
+        $data = [];
+        foreach ($results as $key => $response) {
+            $data[$key] = [true, $response];
         }
-
-        foreach ($suspensionArr as $index => $suspension) {
-            $suspension->suspend();
+        foreach ($exceptions as $key => $exception) {
+            $data[$key] = [false, $exception];
         }
-
-        ksort($result);
-        return $result;
-    }
-
-    #[\Override]
-    protected function deferError($options, $exception)
-    {
-        if (!empty($options['error'])) {
-            call_user_func($options['error'], $exception);
-        }
+        ksort($data);
+        return $data;
     }
 
 }

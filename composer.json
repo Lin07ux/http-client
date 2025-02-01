@@ -1,11 +1,11 @@
 {
     "name"  : "workerman/http-client",
     "type"  : "library",
-    "homepage": "http://www.workerman.net",
+    "homepage": "https://www.workerman.net",
     "license" : "MIT",
     "require": {
         "workerman/psr7": ">=1.4.3",
-        "workerman/workerman": "^4.1.0||^5.0.0||dev-master"
+        "workerman/workerman": "^5.1 || dev-master"
     },
     "autoload": {
         "psr-4": {"Workerman\\Http\\": "./src"}

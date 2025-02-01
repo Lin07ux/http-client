@@ -120,12 +120,20 @@ Worker::runAll();
 ```
 
 # Parallel
+
+This feature requires http-client version >= v3.0 .
+When using the fiber driver, you must install revolt/event-loop.
+
 ```php
 use Workerman\Worker;
+use Workerman\Events\Fiber;
+use Workerman\Events\Swoole;
+use Workerman\Events\Swow;
 
 require_once __DIR__ . '/vendor/autoload.php';
 
 $worker = new Worker();
+$worker->eventLoop = Fiber::class; // or Swoole::class or Swow::class
 $worker->onWorkerStart = function () {
     $http = new Workerman\Http\ParallelClient();
 

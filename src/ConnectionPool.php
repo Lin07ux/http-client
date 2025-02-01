@@ -13,6 +13,8 @@
  */
 namespace Workerman\Http;
 
+use Exception;
+use Throwable;
 use \Workerman\Connection\AsyncTcpConnection;
 use \Workerman\Timer;
 use \Workerman\Worker;
@@ -26,22 +28,22 @@ class ConnectionPool extends Emitter
     /**
      * @var array
      */
-    protected $_idle = [];
+    protected array $idle = [];
 
     /**
      * @var array
      */
-    protected $_using = [];
+    protected array $using = [];
 
     /**
      * @var int
      */
-    protected $_timer = 0;
+    protected int $timer = 0;
 
     /**
      * @var array
      */
-    protected $_options = [
+    protected array $options = [
         'max_conn_per_addr' => 128,
         'keepalive_timeout' => 15,
         'connect_timeout'   => 30,
@@ -53,9 +55,9 @@ class ConnectionPool extends Emitter
      *
      * @param array $option
      */
-    public function __construct($option = [])
+    public function __construct(array $option = [])
     {
-        $this->_options = array_merge($this->_options, $option);
+        $this->options = array_merge($this->options, $option);
     }
 
     /**
@@ -65,46 +67,47 @@ class ConnectionPool extends Emitter
      * @param bool $ssl
      * @param string $proxy
      * @return mixed
+     * @throws Exception
      */
-    public function fetch($address, $ssl = false, $proxy = '')
+    public function fetch($address, bool $ssl = false, string $proxy = ''): mixed
     {
-        $max_con = $this->_options['max_conn_per_addr'];
+        $max_con = $this->options['max_conn_per_addr'];
         $targetAddress = $address;
         $address = ProxyHelper::addressKey($address, $proxy);
-        if (!empty($this->_using[$address])) {
-            if (count($this->_using[$address]) >= $max_con) {
-                return;
+        if (!empty($this->using[$address])) {
+            if (count($this->using[$address]) >= $max_con) {
+                return null;
             }
         }
-        if (empty($this->_idle[$address])) {
+        if (empty($this->idle[$address])) {
             $connection = $this->create($targetAddress, $ssl, $proxy);
-            $this->_idle[$address][$connection->id] = $connection;
+            $this->idle[$address][$connection->id] = $connection;
         }
-        $connection = array_pop($this->_idle[$address]);
-        if (!isset($this->_using[$address])) {
-            $this->_using[$address] = [];
+        $connection = array_pop($this->idle[$address]);
+        if (!isset($this->using[$address])) {
+            $this->using[$address] = [];
         }
-        $this->_using[$address][$connection->id] = $connection;
+        $this->using[$address][$connection->id] = $connection;
         $connection->pool['request_time'] = time();
         $this->tryToCreateConnectionCheckTimer();
         return $connection;
     }
 
     /**
-     * Recycle an connection.
+     * Recycle a connection.
      *
      * @param $connection AsyncTcpConnection
      */
-    public function recycle($connection)
+    public function recycle(AsyncTcpConnection $connection): void
     {
         $connection_id = $connection->id;
         $address = $connection->address;
-        unset($this->_using[$address][$connection_id]);
-        if (empty($this->_using[$address])) {
-            unset($this->_using[$address]);
+        unset($this->using[$address][$connection_id]);
+        if (empty($this->using[$address])) {
+            unset($this->using[$address]);
         }
         if ($connection->getStatus(false) === 'ESTABLISHED') {
-            $this->_idle[$address][$connection_id] = $connection;
+            $this->idle[$address][$connection_id] = $connection;
             $connection->pool['idle_time'] = time();
             $connection->onConnect = $connection->onMessage = $connection->onError =
             $connection->onClose = $connection->onBufferFull = $connection->onBufferDrain = null;
@@ -118,35 +121,36 @@ class ConnectionPool extends Emitter
      *
      * @param $connection
      */
-    public function delete($connection)
+    public function delete($connection): void
     {
         $connection_id = $connection->id;
         $address = $connection->address;
-        unset($this->_idle[$address][$connection_id]);
-        if (empty($this->_idle[$address])) {
-            unset($this->_idle[$address]);
+        unset($this->idle[$address][$connection_id]);
+        if (empty($this->idle[$address])) {
+            unset($this->idle[$address]);
         }
-        unset($this->_using[$address][$connection_id]);
-        if (empty($this->_using[$address])) {
-            unset($this->_using[$address]);
+        unset($this->using[$address][$connection_id]);
+        if (empty($this->using[$address])) {
+            unset($this->using[$address]);
         }
     }
 
     /**
      * Close timeout connection.
+     * @throws Throwable
      */
-    public function closeTimeoutConnection()
+    public function closeTimeoutConnection(): void
     {
-        if (empty($this->_idle) && empty($this->_using)) {
-            Timer::del($this->_timer);
-            $this->_timer = 0;
+        if (empty($this->idle) && empty($this->using)) {
+            Timer::del($this->timer);
+            $this->timer = 0;
             return;
         }
         $time = time();
-        $keepalive_timeout = $this->_options['keepalive_timeout'];
-        foreach ($this->_idle as $address => $connections) {
+        $keepalive_timeout = $this->options['keepalive_timeout'];
+        foreach ($this->idle as $address => $connections) {
             if (empty($connections)) {
-                unset($this->_idle[$address]);
+                unset($this->idle[$address]);
                 continue;
             }
             foreach ($connections as $connection) {
@@ -157,11 +161,11 @@ class ConnectionPool extends Emitter
             }
         }
 
-        $connect_timeout = $this->_options['connect_timeout'];
-        $timeout = $this->_options['timeout'];
-        foreach ($this->_using as $address => $connections) {
+        $connect_timeout = $this->options['connect_timeout'];
+        $timeout = $this->options['timeout'];
+        foreach ($this->using as $address => $connections) {
             if (empty($connections)) {
-                unset($this->_using[$address]);
+                unset($this->using[$address]);
                 continue;
             }
             foreach ($connections as $connection) {
@@ -173,7 +177,7 @@ class ConnectionPool extends Emitter
                         if ($connection->onError) {
                             try {
                                 call_user_func($connection->onError, $connection, 1, 'connect ' . $connection->getRemoteAddress() . ' timeout after ' . $diff . ' seconds');
-                            } catch (\Throwable $exception) {
+                            } catch (Throwable $exception) {
                                 $this->delete($connection);
                                 $connection->close();
                                 throw $exception;
@@ -188,7 +192,7 @@ class ConnectionPool extends Emitter
                         if ($connection->onError) {
                             try {
                                 call_user_func($connection->onError, $connection, 128, 'read ' . $connection->getRemoteAddress() . ' timeout after ' . $diff . ' seconds');
-                            } catch (\Throwable $exception) {
+                            } catch (Throwable $exception) {
                                 $this->delete($connection);
                                 $connection->close();
                                 throw $exception;
@@ -210,8 +214,9 @@ class ConnectionPool extends Emitter
      * @param bool $ssl
      * @param string $proxy
      * @return AsyncTcpConnection
+     * @throws Exception
      */
-    protected function create($address, $ssl = false, $proxy = '')
+    protected function create($address, bool $ssl = false, string $proxy = ''): AsyncTcpConnection
     {
         $context = array(
             'ssl' => array(
@@ -223,8 +228,8 @@ class ConnectionPool extends Emitter
                 'proxy' => $proxy
             ),
         );
-        if (!empty( $this->_options['context'])) {
-            $context = $this->_options['context'];
+        if (!empty( $this->options['context'])) {
+            $context = $this->options['context'];
         }
         if (!$ssl) {
             unset($context['ssl']);
@@ -233,7 +238,7 @@ class ConnectionPool extends Emitter
             unset($context['http']['proxy']);
         }
         if (!class_exists(Worker::class) || is_null(Worker::$globalEvent)) {
-            throw new \Exception('Only the workerman environment is supported.');
+            throw new Exception('Only the workerman environment is supported.');
         }
         $connection = new AsyncTcpConnection($address, $context);
         if ($ssl) {
@@ -249,10 +254,10 @@ class ConnectionPool extends Emitter
     /**
      * Create Timer.
      */
-    protected function tryToCreateConnectionCheckTimer()
+    protected function tryToCreateConnectionCheckTimer(): void
     {
-        if (!$this->_timer) {
-            $this->_timer = Timer::add(1, [$this, 'closeTimeoutConnection']);
+        if (!$this->timer) {
+            $this->timer = Timer::add(1, [$this, 'closeTimeoutConnection']);
         }
     }
 }
