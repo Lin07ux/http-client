@@ -74,18 +74,19 @@ class Client
     public function request(string $url, array $options = []): mixed
     {
         $options['url'] = $url;
+        $suspend = false;
         $isCoroutine = !isset($options['success']) && Coroutine::isCoroutine();
         if ($isCoroutine) {
             $options['is_coroutine'] = true;
             $result = $exception = null;
             $coroutine = Coroutine::getCurrent();
-            $options['success'] = function ($response) use ($coroutine, &$result) {
+            $options['success'] = function ($response) use ($coroutine, &$result, &$suspend) {
                 $result = $response;
-                $coroutine->resume();
+                $suspend && $coroutine->resume();
             };
-            $options['error'] = function ($throwable) use ($coroutine, &$exception) {
+            $options['error'] = function ($throwable) use ($coroutine, &$exception, &$suspend) {
                 $exception = $throwable;
-                $coroutine->resume();
+                $suspend && $coroutine->resume();
             };
         }
         try {
@@ -97,6 +98,7 @@ class Client
             return null;
         }
         if ($isCoroutine) {
+            $suspend = true;
             $coroutine->suspend();
             if ($exception) {
                 throw $exception;
@@ -357,12 +359,15 @@ class Client
      */
     protected function deferError($options, $exception): void
     {
+        if ($options['is_coroutine'] ?? false) {
+            if ($options['error']) {
+                call_user_func($options['error'], $exception);
+                return;
+            }
+            throw $exception;
+        }
         if (isset($options['error'])) {
             Timer::add(0.000001, $options['error'], [$exception], false);
-            return;
-        }
-        if ($options['is_coroutine'] ?? false) {
-            throw $exception;
         }
     }
 }

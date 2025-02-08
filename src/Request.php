@@ -212,10 +212,10 @@ class Request extends \Workerman\Psr7\Request
     }
 
     /**
-     * @param string $data
+     * @param string|array $data
      * @return $this
      */
-    public function write(string $data = ''): static
+    public function write(string|array $data = ''): static
     {
         if (!$this->writeable()) {
             $this->emitError(new RuntimeException('Request pending and can not send request again'));
