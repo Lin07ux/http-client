@@ -17,7 +17,7 @@ use Exception;
 use RuntimeException;
 use Throwable;
 use Workerman\Coroutine\Channel;
-use Workerman\Coroutine\Coroutine;
+use Workerman\Coroutine;
 use Workerman\Timer;
 
 /**
