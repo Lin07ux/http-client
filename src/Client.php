@@ -95,6 +95,9 @@ class Client
             $this->process($address);
         } catch (Throwable $exception) {
             $this->deferError($options, $exception);
+            if ($isCoroutine) {
+                throw $exception;
+            }
             return null;
         }
         if ($isCoroutine) {

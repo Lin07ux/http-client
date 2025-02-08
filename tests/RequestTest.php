@@ -61,6 +61,26 @@ class RequestTest extends TestCase
         $this->assertTrue($errorCalled);
     }
 
+    public function testBadAddressException()
+    {
+        $successCalled = false;
+        $errorCalled = false;
+        $http = new Client();
+        $http->get(':bad_address/exception', function ($response) use (&$successCalled) {
+            $successCalled = true;
+        }, function ($exception) use (&$errorCalled) {
+            $errorCalled = true;
+        });
+        for ($i = 0; $i < 10; $i++) {
+            if ($successCalled || $errorCalled) {
+                break;
+            }
+            Timer::sleep(0.1);
+        }
+        $this->assertFalse($successCalled);
+        $this->assertTrue($errorCalled);
+    }
+
     /**
      * Test POST request with callbacks
      */
@@ -289,6 +309,26 @@ class RequestTest extends TestCase
                 'data' => ['key1' => 'value1', 'key2' => 'value2'],
             ];
             $http->request('http://127.0.0.1:7171/exception', $options);
+        } catch (Throwable $e) {
+            $throw = true;
+            $this->assertInstanceOf(RuntimeException::class, $e);
+        }
+
+        $this->assertTrue($throw);
+
+    }
+
+    public function testSynchronousBadAddressException()
+    {
+        $throw = false;
+        try {
+            $http = new Client();
+            $options = [
+                'method' => 'POST',
+                'version' => '1.1',
+                'data' => ['key1' => 'value1', 'key2' => 'value2'],
+            ];
+            $http->request(':bad_address/exception', $options);
         } catch (Throwable $e) {
             $throw = true;
             $this->assertInstanceOf(RuntimeException::class, $e);
