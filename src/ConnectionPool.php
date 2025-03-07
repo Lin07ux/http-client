@@ -218,24 +218,21 @@ class ConnectionPool extends Emitter
      */
     protected function create($address, bool $ssl = false, string $proxy = ''): AsyncTcpConnection
     {
-        $context = array(
-            'ssl' => array(
+        $context = [
+            'ssl' => [
                 'verify_peer' => false,
                 'verify_peer_name'  => false,
                 'allow_self_signed' => true
-            ),
-            'http' => array(
-                'proxy' => $proxy
-            ),
-        );
+            ]
+        ];
         if (!empty( $this->options['context'])) {
             $context = $this->options['context'];
         }
         if (!$ssl) {
             unset($context['ssl']);
         }
-        if (empty($proxy)) {
-            unset($context['http']['proxy']);
+        if ($proxy) {
+            $context['http']['proxy'] = $proxy;
         }
         if (!class_exists(Worker::class) || is_null(Worker::$globalEvent)) {
             throw new Exception('Only the workerman environment is supported.');
