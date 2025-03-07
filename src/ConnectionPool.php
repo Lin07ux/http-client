@@ -218,18 +218,18 @@ class ConnectionPool extends Emitter
      */
     protected function create($address, bool $ssl = false, string $proxy = ''): AsyncTcpConnection
     {
-        $context = array(
-            'ssl' => array(
+        $context = [
+            'ssl' => [
                 'verify_peer' => false,
                 'verify_peer_name'  => false,
                 'allow_self_signed' => true
-            ),
-            'http' => array(
-                'proxy' => $proxy
-            ),
-        );
+            ],
+            'http' => [
+                'proxy' => $proxy,
+            ]
+        ];
         if (!empty( $this->options['context'])) {
-            $context = $this->options['context'];
+            $context = array_merge($context, $this->options['context']);
         }
         if (!$ssl) {
             unset($context['ssl']);
