@@ -223,16 +223,19 @@ class ConnectionPool extends Emitter
                 'verify_peer' => false,
                 'verify_peer_name'  => false,
                 'allow_self_signed' => true
+            ],
+            'http' => [
+                'proxy' => $proxy,
             ]
         ];
         if (!empty( $this->options['context'])) {
-            $context = $this->options['context'];
+            $context = array_merge($context, $this->options['context']);
         }
         if (!$ssl) {
             unset($context['ssl']);
         }
-        if ($proxy) {
-            $context['http']['proxy'] = $proxy;
+        if (empty($proxy)) {
+            unset($context['http']['proxy']);
         }
         if (!class_exists(Worker::class) || is_null(Worker::$globalEvent)) {
             throw new Exception('Only the workerman environment is supported.');
